@@ -16,8 +16,8 @@ from pico_torrent.bencode import BencodeDecoder, BencodeDecodeError
 
 
 @dataclasses.dataclass
-class TorrentPeer:
-    """Torrent peer."""
+class TorrentPeerInfo:
+    """Torrent peer information."""
 
     ip: ipaddress.IPv4Address
     port: int
@@ -95,7 +95,7 @@ class TorrentTracker:
 
         return self.announce_url + '?' + urlencode(params)
 
-    def get_available_peers(self) -> List[TorrentPeer]:
+    def get_available_peers(self) -> List[TorrentPeerInfo]:
         """Fetch available peers from announce."""
         request_url = self._get_url_for_fetch_available_peers(
             first=True if not self.tracker_id else False,
@@ -134,7 +134,7 @@ class TorrentTracker:
             ip = ipaddress.IPv4Address(socket.inet_ntoa(ip_bytes))
             port, *_ = cast(Tuple[int, ...], struct.unpack('>H', port_bytes))
 
-            peer = TorrentPeer(ip=ipaddress.IPv4Address(ip), port=port)
+            peer = TorrentPeerInfo(ip=ipaddress.IPv4Address(ip), port=port)
             fetched_peers.append(peer)
 
         return fetched_peers
