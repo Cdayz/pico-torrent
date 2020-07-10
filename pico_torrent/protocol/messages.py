@@ -85,7 +85,7 @@ class Choke(BasePeerMessage):
 
     def encode(self) -> bytes:
         """Encode message to bytes."""
-        return struct.pack('>Ib', 1, 0)
+        return struct.pack('>Ib', 1, self.message_id)
 
 
 class Unchoke(BasePeerMessage):
@@ -106,4 +106,5 @@ class Unchoke(BasePeerMessage):
 
     def encode(self) -> bytes:
         """Encode message to bytes."""
-        return struct.pack('>Ib', 1, 1)
+        return struct.pack('>Ib', 1, self.message_id)
+
