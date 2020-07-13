@@ -2,10 +2,14 @@
 
 import struct
 
-from typing import List
+from typing import List, Final
 
 from .abstract import BasePeerMessage
 from .raw_message import RawPeerMessage, PeerMessageId
+
+
+# Constant representing a request size of bytes
+REQUEST_SIZE: Final[int] = 2**14  # 16 KB
 
 
 class Handshake(BasePeerMessage):
@@ -236,4 +240,161 @@ class BitField(BasePeerMessage):
             len(self.raw_bitfield)+1,
             self.message_id,
             self.raw_bitfield,
+        )
+
+
+class Request(BasePeerMessage):
+    """Request message of P2P protocol.
+
+    format: <len=0013><id=6><index><begin><length>
+
+    where:
+        index - zero based index of piece
+        begin - zero based byte offset within a piece
+        length - requested length
+    """
+
+    message_id = PeerMessageId.Request
+
+    def __init__(self, index: int, begin: int, length: int = REQUEST_SIZE):
+        """Initialize request message."""
+        self.index = index
+        self.begin = begin
+        self.length = length
+
+    @classmethod
+    def decode_from_raw(cls, raw_message: RawPeerMessage):
+        """Decode from raw peer message."""
+        cls._check_message_type(raw_message)
+        index, begin, length = struct.unpack('>III', raw_message.payload)
+        return cls(index=index, begin=begin, length=length)
+
+    def encode(self) -> bytes:
+        """Encode message to bytes."""
+        return struct.pack(
+            '>IbIII',
+            13,
+            self.message_id,
+            self.index,
+            self.begin,
+            self.length,
+        )
+
+
+class Piece(BasePeerMessage):
+    """Piece message of P2P protocol.
+
+    format: <len=0009+X><id=7><index><begin><block>
+
+    where:
+        index - zero-based piece index
+        begin - zero-based offset within piece
+        block - block of data, which is subset of piece specified by index
+    """
+
+    message_id = PeerMessageId.Piece
+
+    # Piece message length without block data
+    BASE_LENGTH = 9
+
+    def __init__(self, index: int, begin: int, block: bytes):
+        """Initialize piece message."""
+        self.index = index
+        self.begin = begin
+        self.block = block
+
+    @classmethod
+    def decode_from_raw(cls, raw_message: RawPeerMessage):
+        """Decode from raw peer message."""
+        cls._check_message_type(raw_message)
+        index, begin = struct.unpack(
+            '>II',
+            raw_message.payload[:8],
+        )
+        block, *_ = struct.unpack(
+            f'>{raw_message.length-cls.BASE_LENGTH}s',
+            raw_message.payload[8:],
+        )
+        return cls(index=index, begin=begin, block=block)
+
+    def encode(self) -> bytes:
+        """Encode message to bytes."""
+        return struct.pack(
+            f'>IbII{len(self.block)}s',
+            self.BASE_LENGTH+len(self.block),
+            self.message_id,
+            self.index,
+            self.begin,
+            self.block,
+        )
+
+
+class Cancel(BasePeerMessage):
+    """Cancel message of P2P protocol.
+
+    format: <len=0013><id=8><index><begin><length>
+
+    This message represents cancel action on request block.
+    Message payload is identical to Request message.
+    """
+
+    message_id = PeerMessageId.Cancel
+
+    def __init__(self, index: int, begin: int, length: int = REQUEST_SIZE):
+        """Initialize cancel message."""
+        self.index = index
+        self.begin = begin
+        self.length = length
+
+    @classmethod
+    def decode_from_raw(cls, raw_message: RawPeerMessage):
+        """Decode from raw peer message."""
+        cls._check_message_type(raw_message)
+        index, begin, length = struct.unpack('>III', raw_message.payload)
+        return cls(index=index, begin=begin, length=length)
+
+    def encode(self) -> bytes:
+        """Encode message to bytes."""
+        return struct.pack(
+            '>IbIII',
+            13,
+            self.message_id,
+            self.index,
+            self.begin,
+            self.length,
+        )
+
+
+class Port(BasePeerMessage):
+    """Port message of P2P protocol.
+
+    format: <len=0003><id=9><listen-port>
+
+    The port message is sent by newer versions of
+    the Mainline that implements a DHT tracker.
+    The listen port is the port this peer's DHT node is listening on.
+    This peer should be inserted in the local routing table
+    (if DHT tracker is supported).
+    """
+
+    message_id = PeerMessageId.Port
+
+    def __init__(self, listen_port: int):
+        """Initialize port message."""
+        self.listen_port = listen_port
+
+    @classmethod
+    def decode_from_raw(cls, raw_message: RawPeerMessage):
+        """Decode from raw peer message."""
+        cls._check_message_type(raw_message)
+        port, *_ = struct.unpack('>I', raw_message.payload)
+        return cls(listen_port=port)
+
+    def encode(self) -> bytes:
+        """Encode message to bytes."""
+        return struct.pack(
+            '>IbI',
+            3,
+            self.message_id,
+            self.listen_port,
         )
