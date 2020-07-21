@@ -44,6 +44,19 @@ def run():
 
     with options.torrent_file.open('rb') as f:
         torrent = TorrentFile.from_torrent_file(f)
+
+        # NOTE: trackers manager works with multiply trackers
+        # NOTE: to return peers into peers manager
+        # tracker = TorrentTrackersManager(torrent)
+        # NOTE: peers manager saves connections to peers and download pieces
+        # NOTE: and peers manager mark peers as bad and not work with it
+        # peers = PeersManager(tracker)
+        # NOTE: download manager fetches pieces from peers manager
+        # NOTE: and stores it to filesystem by given paths
+        # downloader = DownloadManager(peers)
+        # NOTE: download manager start downloading torrent by download function
+        # downloader.download()
+
         tracker = TorrentTracker(
             torrent_announce_url=torrent.announce,
             torrent_info_hash=torrent.info_hash,
