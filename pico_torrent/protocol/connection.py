@@ -45,7 +45,7 @@ class P2PConnection:
         if self.handshaked:
             raise ProtocolError(
                 'handshake must be called only once '
-                'between any other messages are send to remote peer',
+                'before any other messages are send to remote peer',
             )
 
         self.send(handshake)
