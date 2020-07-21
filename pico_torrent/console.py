@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pico_torrent.torrent import TorrentFile
 from pico_torrent.tracker import TorrentTracker
+from pico_torrent.protocol import connection, messages
 
 
 @dataclasses.dataclass
@@ -52,4 +53,13 @@ def run():
         )
 
         peers = tracker.get_available_peers()
-        print(peers)
+        first_peer = peers[0]
+
+        with connection.P2PConnection(first_peer) as conn:
+            handshake_msg = messages.Handshake(
+                torrent.info_hash,
+                tracker.peer_id.encode(),
+            )
+            remote_handshake = conn.handshake(handshake_msg)
+
+            print(f'Received {remote_handshake}')
