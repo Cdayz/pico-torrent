@@ -1,4 +1,8 @@
-"""Messages of P2P protocol."""
+"""Messages of P2P protocol.
+
+More about BotTorrent protocol messages in unofficial documentation,
+located at: https://wiki.theory.org/index.php/BitTorrentSpecification
+"""
 
 import struct
 
@@ -15,7 +19,7 @@ REQUEST_SIZE: Final[int] = 2**14  # 16 KB
 class Handshake(BasePeerMessage):
     """Handshake message of P2P protocol.
 
-    format: <pstrlen><pstr><reserved><info_hash><peer_id>
+    format: `<pstrlen><pstr><reserved><info_hash><peer_id>`
 
     where:
         pstrlen - string length of <pstr>, as a single raw byte
@@ -26,6 +30,9 @@ class Handshake(BasePeerMessage):
     """
 
     message_id = PeerMessageId.Handshake
+
+    # NOTE: this constant need for make handshake with remote peer normally
+    message_length = 68
 
     def __init__(self, info_hash: bytes, peer_id: bytes):
         """Initialize Handshake message."""
@@ -55,7 +62,7 @@ class Handshake(BasePeerMessage):
 class KeepAlive(BasePeerMessage):
     """KeepAlive message of P2P protocol.
 
-    format: <len=0000>
+    format: `<len=0000>`
 
     This message has no any payload.
     """
@@ -76,7 +83,7 @@ class KeepAlive(BasePeerMessage):
 class Choke(BasePeerMessage):
     """Choke message of P2P protocol.
 
-    format: <len=0001><id=0>
+    format: `<len=0001><id=0>`
 
     This method indicates that connected client are choked from now.
     """
@@ -97,7 +104,7 @@ class Choke(BasePeerMessage):
 class Unchoke(BasePeerMessage):
     """Unchoke message of P2P protocol.
 
-    format: <len=0001><id=1>
+    format: `<len=0001><id=1>`
 
     This message indicates that connected client are unchoked from now.
     """
@@ -118,7 +125,7 @@ class Unchoke(BasePeerMessage):
 class Interested(BasePeerMessage):
     """Interested message of P2P protocol.
 
-    format: <len=0001><id=2>
+    format: `<len=0001><id=2>`
 
     This message indicates that connected client interested to download pieces.
     """
@@ -139,7 +146,7 @@ class Interested(BasePeerMessage):
 class NotInterested(BasePeerMessage):
     """NotInterested message of P2P protocol.
 
-    format: <len=0001><id=3>
+    format: `<len=0001><id=3>`
 
     This message indicates that connected client not interested to load pieces.
     """
@@ -160,7 +167,7 @@ class NotInterested(BasePeerMessage):
 class Have(BasePeerMessage):
     """Have message of P2P protocol.
 
-    format: <len=0005><id=4><piece index>
+    format: `<len=0005><id=4><piece index>`
 
     This message indicates that peer have such piece of data by <piece index>.
     """
@@ -186,7 +193,7 @@ class Have(BasePeerMessage):
 class BitField(BasePeerMessage):
     """BitField message of P2P protocol.
 
-    format: <len=0001+X><id=5><bitfield>
+    format: `<len=0001+X><id=5><bitfield>`
 
     X - is length of bit field
 
@@ -246,7 +253,7 @@ class BitField(BasePeerMessage):
 class Request(BasePeerMessage):
     """Request message of P2P protocol.
 
-    format: <len=0013><id=6><index><begin><length>
+    format: `<len=0013><id=6><index><begin><length>`
 
     where:
         index - zero based index of piece
@@ -284,7 +291,7 @@ class Request(BasePeerMessage):
 class Piece(BasePeerMessage):
     """Piece message of P2P protocol.
 
-    format: <len=0009+X><id=7><index><begin><block>
+    format: `<len=0009+X><id=7><index><begin><block>`
 
     where:
         index - zero-based piece index
@@ -332,7 +339,7 @@ class Piece(BasePeerMessage):
 class Cancel(BasePeerMessage):
     """Cancel message of P2P protocol.
 
-    format: <len=0013><id=8><index><begin><length>
+    format: `<len=0013><id=8><index><begin><length>`
 
     This message represents cancel action on request block.
     Message payload is identical to Request message.
@@ -368,7 +375,7 @@ class Cancel(BasePeerMessage):
 class Port(BasePeerMessage):
     """Port message of P2P protocol.
 
-    format: <len=0003><id=9><listen-port>
+    format: `<len=0003><id=9><listen-port>`
 
     The port message is sent by newer versions of
     the Mainline that implements a DHT tracker.
