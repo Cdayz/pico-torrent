@@ -1,6 +1,7 @@
 """Console application of pico-torrent."""
 
 import sys
+import logging
 import argparse
 import dataclasses
 
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from pico_torrent.protocol.metainfo.torrent import TorrentFile
 from pico_torrent.protocol.trackers.tracker import TorrentTracker
-from pico_torrent.protocol.peers import connection, messages
+from pico_torrent.protocol.peers import connection
 from pico_torrent.protocol.utils import peers as peer_utils
 
 
@@ -39,33 +40,36 @@ def parse_cmd_args(args: List[str]) -> CmdOptions:
     )
 
 
+def init_logging() -> logging.Logger:
+    """Initialize logger."""
+    logger = logging.getLogger('pico_torrent')
+    logger.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    )
+    handler.setFormatter(formatter)
+    logger.propagate = False
+    logger.handlers.clear()
+    logger.addHandler(handler)
+
+    return logger
+
+
 def run():
     """Enter function of cli application."""
+    logger = init_logging()
+
     options = parse_cmd_args(sys.argv[1:])
 
     with options.torrent_file.open('rb') as f:
+        logger.info(f'Selected metainfo file {options.torrent_file}')
         torrent = TorrentFile.from_torrent_file(f)
-
-        # ========================================================
-        # NOTE: if we work in peer serve mode
-        # ========================================================
-        # server = TorrentServer(torrent, output_file_or_folder)
-        # server.serve_torrent()
-        # ========================================================
-        # NOTE: if we work in download mode
-        # ========================================================
-        # client = TorrentClient(torrent)
-        # client.download()
-        # ========================================================
-        # NOTE: all of below must be inside TorrentClient class
-        # NOTE: trackers manager works with multiply trackers
-        # NOTE: to return peers into peers manager
-        # tracker = TorrentTrackersManager(torrent)
-        # NOTE: peers manager saves connections to peers and download pieces
-        # NOTE: and peers manager mark peers as bad and not work with it
-        # peers = PeersManager(tracker)
+        logger.info('Metainfo file successfully parsed')
 
         peer_id = peer_utils.generate_peer_id()
+        logger.info(f'Generated peer id is {peer_id!r}')
 
         tracker = TorrentTracker(
             torrent_announce_url=torrent.announce,
@@ -80,11 +84,13 @@ def run():
         peers = tracker.get_available_peers()
         first_peer = peers[0]
 
-        with connection.P2PConnection(first_peer) as conn:
-            handshake_msg = messages.Handshake(
-                torrent.info_hash,
-                tracker.this_peer_id.encode(),
-            )
-            remote_handshake = conn.handshake(handshake_msg)
+        pieces_manager = connection.PiecesManager(torrent)
 
-            print(f'Received {remote_handshake}')
+        conn = connection.TorrentPeerConnection(
+            remote_peer=first_peer,
+            torrent=torrent,
+            peer_id=peer_id,
+            pieces_manager=pieces_manager,
+        )
+
+        conn.communicate()
