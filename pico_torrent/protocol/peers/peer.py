@@ -4,7 +4,7 @@ import ipaddress
 import dataclasses
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class TorrentPeer:
     """Torrent peer definition."""
 
