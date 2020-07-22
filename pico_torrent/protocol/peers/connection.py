@@ -2,14 +2,23 @@
 
 import socket
 import struct
+import logging
 
-from typing import Type, Dict
+from typing import Type, Dict, List
 
 
-from . import messages
-from .peer import TorrentPeer
-from .abstract import BasePeerMessage
-from .raw_message import PeerMessageId, RawPeerMessage
+from pico_torrent.protocol.peers import messages
+from pico_torrent.protocol.peers.peer import TorrentPeer
+from pico_torrent.protocol.peers.abstract import BasePeerMessage
+from pico_torrent.protocol.peers.raw_message import (
+    PeerMessageId,
+    RawPeerMessage,
+)
+from pico_torrent.protocol.pieces.manager import PiecesManager
+
+from pico_torrent.protocol.metainfo.torrent import TorrentFile
+
+logger = logging.getLogger('pico_torrent.protocol.peers.connection')
 
 
 MESSAGES: Dict[PeerMessageId, Type[BasePeerMessage]] = {
@@ -120,11 +129,217 @@ class P2PConnection:
         """Send message to remote peer."""
         self.conn.sendall(message.encode())
 
+    def connect(self):
+        """Connect to remote peer."""
+        self.conn.connect((str(self.peer.ip), self.peer.port))
+
+    def disconnect(self):
+        """Disconnect from remote peer."""
+        self.conn.close()
+
     def __enter__(self) -> 'P2PConnection':
         """Context manager for peer to peer connection."""
-        self.conn.connect((str(self.peer.ip), self.peer.port))
+        self.connect()
         return self
 
     def __exit__(self, err_type, err_value, traceback):
         """Exit from context closes any connections."""
-        self.conn.close()
+        self.disconnect()
+
+
+class P2PReadMessageStream:
+    """Peer to peer message stream."""
+
+    def __init__(self, conn: P2PConnection):
+        """Initialize message stream."""
+        if not conn.handshaked:
+            raise ValueError('only handshaked connections can be readed')
+
+        self.connection = conn
+
+    def __iter__(self) -> 'P2PReadMessageStream':
+        """Return iterator of message stream."""
+        return self
+
+    def __next__(self) -> BasePeerMessage:
+        """Return next peer message from stream."""
+        try:
+            return self.connection.receive()
+
+        except ConnectionError:
+            raise StopIteration()
+
+        except Exception as err:
+            logger.exception(err)
+            raise StopIteration()
+
+
+class TorrentPeerConnection:
+    """Peer to peer connection by BitTorrent protocol."""
+
+    def __init__(
+        self,
+        remote_peer: TorrentPeer,
+        torrent: TorrentFile,
+        peer_id: str,
+        pieces_manager: PiecesManager,
+    ):
+        """Initialize connection."""
+        self.remote_peer = remote_peer
+        self.connection = P2PConnection(self.remote_peer)
+        self.torrent = torrent
+        self.this_peer_id = peer_id
+        self.pieces_manager = pieces_manager
+        # States of peers
+        self.this_peer_state: List[str] = []
+        self.remote_peer_state: List[str] = []
+
+    def cancel(self):
+        """Cancel working with that peer."""
+        logger.info(f'Disconnect from peer {self.remote_peer.ip}')
+        self.pieces_manager.remove_peer(self.remote_peer)
+        self.connection.disconnect()
+
+    def communicate(self):
+        """Communicate with remote peer by BitTorrent protocol."""
+        try:
+            self._communicate()
+        except ProtocolError as err:
+            logger.exception('Protocol error')
+            logger.exception(err)
+        except (ConnectionRefusedError, TimeoutError) as err:
+            logger.exception('Connection was refused or a timeout was reached')
+            logger.exception(err)
+        except ConnectionResetError as err:
+            logger.exception('Connection to remote peer was reset')
+            logger.exception(err)
+
+        self.cancel()
+
+    def _request_piece(self):
+        # TODO: implement request of piece
+        pass
+
+    def _piece_given(self, piece_message: messages.Piece):
+        self.pieces_manager.add_piece(piece_message)
+
+    def _bitfield_given(self, bitfield_message: messages.BitField):
+        self.pieces_manager.add_peer_with_bitfield(
+            self.remote_peer,
+            bitfield_message,
+        )
+
+    def _have_given(self, have_message: messages.Have):
+        self.pieces_manager.add_peer_with_have_message(
+            self.remote_peer,
+            have_message,
+        )
+
+    def _communicate(self):
+        """Communicate with remote peer by BitTorrent protocol."""
+        logger.info(f'Try to connect with peer {self.remote_peer.ip}')
+        self.connection.connect()
+        logger.info(f'Connected to peer {self.remote_peer.ip}')
+
+        logger.info(f'Handshake with peer {self.remote_peer.ip}')
+        self.connection.handshake(
+            messages.Handshake(
+                info_hash=self.torrent.info_hash,
+                peer_id=self.this_peer_id.encode(),
+            ),
+        )
+        logger.info(f'Success handshaked with peer {self.remote_peer.ip}')
+
+        self.this_peer_state.append('choked')
+        logger.info(f'Send `interested` message to peer {self.remote_peer.ip}')
+        self.connection.send(messages.Interested())
+
+        self.this_peer_state.append('interested')
+
+        for message in P2PReadMessageStream(self.connection):
+            if message.message_id == PeerMessageId.Interested:
+                logger.info(
+                    f'Got `interested` message '
+                    f'from peer {self.remote_peer.ip}',
+                )
+                if 'not interested' in self.remote_peer_state:
+                    self.remote_peer_state.remove('not interested')
+
+                self.remote_peer_state.append('interested')
+
+            elif message.message_id == PeerMessageId.NotInterested:
+                logger.info(
+                    f'Got `not interested` message '
+                    f'from peer {self.remote_peer.ip}',
+                )
+                if 'interested' in self.remote_peer_state:
+                    self.remote_peer_state.remove('interested')
+
+                self.remote_peer_state.append('not interested')
+
+            elif message.message_id == PeerMessageId.Choke:
+                logger.info(
+                    f'Got `choke` message from peer {self.remote_peer.ip}',
+                )
+                if 'unchoked' in self.this_peer_state:
+                    self.this_peer_state.remove('unchoked')
+
+                self.this_peer_state.append('choked')
+
+            elif message.message_id == PeerMessageId.Unchoke:
+                logger.info(
+                    f'Got `unchoke` message from peer {self.remote_peer.ip}',
+                )
+                if 'choked' in self.this_peer_state:
+                    self.this_peer_state.remove('choked')
+
+                self.this_peer_state.append('unchoked')
+
+            elif message.message_id == PeerMessageId.Request:
+                logger.info(
+                    f'Ignore `request` message '
+                    f'from peer {self.remote_peer.ip}',
+                )
+
+            elif message.message_id == PeerMessageId.Cancel:
+                logger.info(
+                    f'Ignore `cancel` message '
+                    f'from peer {self.remote_peer.ip}',
+                )
+
+            elif message.message_id == PeerMessageId.KeepAlive:
+                logger.info(
+                    f'Ignore `keep-alive` message '
+                    f'from peer {self.remote_peer.ip}',
+                )
+
+            elif message.message_id == PeerMessageId.Have:
+                logger.info(
+                    f'Got `have` message '
+                    f'from remote peer {self.remote_peer.ip}',
+                )
+                self._have_given(message)
+
+            elif message.message_id == PeerMessageId.BitField:
+                logger.info(
+                    f'Got `bitfield` message '
+                    f'from remote peer {self.remote_peer.ip}',
+                )
+                self._bitfield_given(message)
+
+            elif message.message_id == PeerMessageId.Piece:
+                logger.info(
+                    f'Got `piece` message '
+                    f'from remote peer {self.remote_peer.ip}',
+                )
+                self._piece_given(message)
+
+            if 'choked' not in self.this_peer_state:
+                if 'interested' in self.this_peer_state:
+                    if 'pending request' not in self.this_peer_state:
+                        self.this_peer_state.append('pending request')
+                        logger.info(
+                            f'Pending request piece '
+                            f'from peer {self.remote_peer.ip}',
+                        )
+                        self._request_piece()
