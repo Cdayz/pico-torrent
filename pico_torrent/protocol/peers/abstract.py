@@ -2,7 +2,10 @@
 
 import abc
 
-from .raw_message import RawPeerMessage, PeerMessageId
+from pico_torrent.protocol.peers.raw_message import (
+    RawPeerMessage,
+    PeerMessageId,
+)
 
 
 class BasePeerMessage(abc.ABC):

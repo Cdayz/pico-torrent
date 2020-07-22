@@ -8,8 +8,11 @@ import struct
 
 from typing import List, Final
 
-from .abstract import BasePeerMessage
-from .raw_message import RawPeerMessage, PeerMessageId
+from pico_torrent.protocol.peers.abstract import BasePeerMessage
+from pico_torrent.protocol.peers.raw_message import (
+    RawPeerMessage,
+    PeerMessageId,
+)
 
 
 # Constant representing a request size of bytes
