@@ -5,10 +5,11 @@ import struct
 
 from typing import Type, Dict
 
-from pico_torrent.protocol import messages
-from pico_torrent.tracker import TorrentPeerInfo
-from pico_torrent.protocol.abstract import BasePeerMessage
-from pico_torrent.protocol.raw_message import PeerMessageId, RawPeerMessage
+
+from . import messages
+from .peer import TorrentPeer
+from .abstract import BasePeerMessage
+from .raw_message import PeerMessageId, RawPeerMessage
 
 
 MESSAGES: Dict[PeerMessageId, Type[BasePeerMessage]] = {
@@ -34,7 +35,7 @@ class ProtocolError(Exception):
 class P2PConnection:
     """Peer-to-Peer connection."""
 
-    def __init__(self, peer: TorrentPeerInfo):
+    def __init__(self, peer: TorrentPeer):
         """Initialize peer-to-peer connection."""
         self.peer = peer
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

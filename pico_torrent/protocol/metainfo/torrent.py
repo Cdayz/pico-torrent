@@ -7,7 +7,7 @@ import dataclasses
 from pathlib import Path
 from typing import Optional, BinaryIO, List
 
-from pico_torrent import bencode
+from pico_torrent.protocol import bencode
 
 
 class BadTorrentFile(Exception):

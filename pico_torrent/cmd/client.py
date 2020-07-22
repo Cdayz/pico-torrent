@@ -7,9 +7,10 @@ import dataclasses
 from typing import List
 from pathlib import Path
 
-from pico_torrent.torrent import TorrentFile
-from pico_torrent.tracker import TorrentTracker
-from pico_torrent.protocol import connection, messages
+from pico_torrent.protocol.metainfo.torrent import TorrentFile
+from pico_torrent.protocol.trackers.tracker import TorrentTracker
+from pico_torrent.protocol.peers import connection, messages
+from pico_torrent.protocol.utils import peers as peer_utils
 
 
 @dataclasses.dataclass
@@ -64,12 +65,16 @@ def run():
         # NOTE: and peers manager mark peers as bad and not work with it
         # peers = PeersManager(tracker)
 
+        peer_id = peer_utils.generate_peer_id()
+
         tracker = TorrentTracker(
             torrent_announce_url=torrent.announce,
             torrent_info_hash=torrent.info_hash,
             full_torrent_bytes=(
                 len(torrent.info.pieces)*torrent.info.piece_length
             ),
+            this_peer_id=peer_id,
+            this_peer_listen_port=6889,
         )
 
         peers = tracker.get_available_peers()
@@ -78,7 +83,7 @@ def run():
         with connection.P2PConnection(first_peer) as conn:
             handshake_msg = messages.Handshake(
                 torrent.info_hash,
-                tracker.peer_id.encode(),
+                tracker.this_peer_id.encode(),
             )
             remote_handshake = conn.handshake(handshake_msg)
 

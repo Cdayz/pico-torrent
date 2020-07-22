@@ -3,24 +3,14 @@
 import io
 import socket
 import struct
-import random
 import requests
 import ipaddress
-import functools
-import dataclasses
 
 from urllib.parse import urlencode
 from typing import List, Tuple, cast
 
-from pico_torrent.bencode import BencodeDecoder, BencodeDecodeError
-
-
-@dataclasses.dataclass
-class TorrentPeerInfo:
-    """Torrent peer information."""
-
-    ip: ipaddress.IPv4Address
-    port: int
+from pico_torrent.protocol.peers.peer import TorrentPeer
+from pico_torrent.protocol.bencode import BencodeDecoder, BencodeDecodeError
 
 
 class BadTrackerResponse(Exception):
@@ -35,6 +25,8 @@ class TorrentTracker:
         torrent_announce_url: str,
         torrent_info_hash: bytes,
         full_torrent_bytes: int,
+        this_peer_listen_port: int,
+        this_peer_id: str,
     ):
         """Initialize torrent tracker client."""
         self.interval = None
@@ -42,45 +34,24 @@ class TorrentTracker:
         self.announce_url = torrent_announce_url
         self.torrent_info_hash = torrent_info_hash
         self.full_torrent_bytes = full_torrent_bytes
-
-    @property
-    def uploaded(self) -> int:
-        """Count of uploaded bytes."""
-        return 0
-
-    @property
-    def downloaded(self) -> int:
-        """Count of downloaded bytes."""
-        return 0
+        # Some useful stats for tracker
+        self.uploaded = 0
+        self.downloaded = 0
+        # Information about this peer
+        self.this_peer_port = this_peer_listen_port
+        self.this_peer_id = this_peer_id
 
     @property
     def left(self) -> int:
         """Count of bytes left for download full torrent file."""
         return self.full_torrent_bytes - self.downloaded
 
-    @functools.cached_property
-    def port(self) -> int:
-        """Port of peer."""
-        return random.randint(6881, 6889)  # noqa: S311
-
-    @functools.cached_property
-    def peer_id(self) -> str:
-        """Peer ID for current torrent download session."""
-        prefix = '-PT{}-'.format(
-            ''.join(str(random.randint(0, 9)) for _ in range(4)),  # noqa: S311
-        )
-        number = ''.join(
-            str(random.randint(0, 9)) for _ in range(12)  # noqa: S311
-        )
-
-        return prefix + number
-
     def _get_url_for_fetch_available_peers(self, first: bool = False) -> str:
         """Return url for fetch available peers from announce tracker."""
         params = {
             "info_hash": self.torrent_info_hash,
-            "peer_id": self.peer_id,
-            "port": self.port,
+            "peer_id": self.this_peer_id,
+            "port": self.this_peer_port,
             "uploaded": self.uploaded,
             "downloaded": self.downloaded,
             "left": self.left,
@@ -95,7 +66,7 @@ class TorrentTracker:
 
         return self.announce_url + '?' + urlencode(params)
 
-    def get_available_peers(self) -> List[TorrentPeerInfo]:
+    def get_available_peers(self) -> List[TorrentPeer]:
         """Fetch available peers from announce."""
         request_url = self._get_url_for_fetch_available_peers(
             first=True if not self.tracker_id else False,
@@ -134,7 +105,7 @@ class TorrentTracker:
             ip = ipaddress.IPv4Address(socket.inet_ntoa(ip_bytes))
             port, *_ = cast(Tuple[int, ...], struct.unpack('>H', port_bytes))
 
-            peer = TorrentPeerInfo(ip=ipaddress.IPv4Address(ip), port=port)
+            peer = TorrentPeer(ip=ipaddress.IPv4Address(ip), port=port)
             fetched_peers.append(peer)
 
         return fetched_peers
