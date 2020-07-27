@@ -224,13 +224,13 @@ class TorrentPeerConnection:
         self.pieces_manager.add_piece(piece_message)
 
     def _bitfield_given(self, bitfield_message: messages.BitField):
-        self.pieces_manager.add_peer_with_bitfield(
+        self.pieces_manager.update_peer_with_bitfield(
             self.remote_peer,
             bitfield_message,
         )
 
     def _have_given(self, have_message: messages.Have):
-        self.pieces_manager.add_peer_with_have_message(
+        self.pieces_manager.update_peer_with_have_message(
             self.remote_peer,
             have_message,
         )
